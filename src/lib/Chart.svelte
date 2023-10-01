@@ -16,6 +16,12 @@
 		}
 		now = new Date(+new Date(now) + oneDay);
 	}
+
+	// seed data
+	for (let i = 1; i < 100; i++) {
+		addData();
+	}
+
 	const option = {
 		title: {
 			text: 'Time series forecast using Simple Moving Average',
@@ -43,8 +49,8 @@
 		]
 	};
 
-	let clear;
-	let myChart;
+	let clear: number;
+	let myChart: echarts.ECharts;
 
 	$: {
 		clearInterval(clear);
@@ -63,42 +69,9 @@
 			});
 		}, 500);
 	}
-	// const option = {
-	// 	title: {
-	// 		text: 'Time series line-chart'
-	// 	},
-	// 	tooltip: {},
-	// 	xAxis: {
-	// 		data: [
-	// 			'shirt',
-	// 			'cardigan',
-	// 			'chiffon',
-	// 			'pants',
-	// 			'heels',
-	// 			'socks',
-	// 			'shirt',
-	// 			'cardigan',
-	// 			'chiffon',
-	// 			'pants',
-	// 			'heels',
-	// 			'socks'
-	// 		]
-	// 	},
-	// 	yAxis: {},
-	// 	series: [
-	// 		{
-	// 			name: 'sales',
-	// 			type: 'line',
-	// 			data: [5, 20, 36, 10, 10, 20, 5, 20, 36, 10, 10, 20]
-	// 		}
-	// 	]
-	// };
 
 	export function charts(node: HTMLElement) {
-		for (var i = 1; i < 100; i++) {
-			addData();
-		}
-		myChart = echarts.init(node, 'dark');
+		myChart = echarts.init(node, 'dark', { height: 500 });
 		myChart.setOption(option);
 	}
 </script>
@@ -113,8 +86,9 @@
 
 <style>
 	.container {
-		width: 100%;
+		width: 100vw;
 		height: 500px;
-		margin: auto;
+		margin: 0;
+		padding: 0;
 	}
 </style>
