@@ -1,50 +1,63 @@
 <script lang="ts">
 	import * as echarts from 'echarts';
-	let base = +new Date(2014, 9, 3);
-	let oneDay = 24 * 3600 * 1000;
-	let date: string[] = [];
-	var data = [Math.random() * 150];
-	let now = new Date(base);
-	function addData(shift: boolean = false) {
-		// now = new Date([now.getFullYear(), now.getMonth() + 1, now.getDate()].join('/'));
-		let nowf = [now.getFullYear(), now.getMonth() + 1, now.getDate()].join('/');
-		date.push(nowf);
-		data.push((Math.random() - 0.4) * 10 + data[data.length - 1]);
-		if (shift) {
-			date.shift();
-			data.shift();
-		}
-		now = new Date(+new Date(now) + oneDay);
+	import { invoke } from '@tauri-apps/api/tauri';
+
+	type ChartData = {
+		x: string[];
+		y: number[];
+	};
+
+	let data: ChartData = { x: [], y: [] };
+	const WINDOW_SIZE = 100;
+	const UPDATE_INTERVAL = 500;
+
+	export async function addData(shift = 0) {
+		data = await invoke('add_data', { shift });
 	}
 
-	// seed data
-	for (let i = 1; i < 100; i++) {
+	// Seed
+	for (let i = 1; i <= WINDOW_SIZE; i++) {
 		addData();
 	}
 
-	const option = {
-		title: {
-			text: 'Time series forecast using Simple Moving Average',
-			padding: 15,
-			x: 'center'
+	let option = {
+		// animation: 1000,
+		// title: {
+		// 	text: 'Forecast time-series',
+		// 	x: 'center'
+		// },
+		tooltip: {
+			trigger: 'axis'
+		},
+		legend: {
+			data: ['Actual']
+		},
+		grid: {
+			left: '1%',
+			right: '1%',
+			bottom: '3%',
+			containLabel: true
+		},
+		toolbox: {
+			feature: {
+				saveAsImage: {}
+			}
 		},
 		xAxis: {
 			type: 'category',
 			boundaryGap: false,
-			data: date
+			data: data.x
 		},
 		yAxis: {
-			boundaryGap: [0, '50%'],
-			type: 'value'
+			type: 'value',
+			data: data.y
 		},
 		series: [
 			{
-				name: '成交',
+				name: 'Actual',
+				showSymbol: false,
 				type: 'line',
-				// smooth: true,
-				symbol: 'none',
-				stack: 'a',
-				data: data
+				data: data.y
 			}
 		]
 	};
@@ -52,27 +65,26 @@
 	let clear: number;
 	let myChart: echarts.ECharts;
 
-	$: {
-		clearInterval(clear);
-		clear = setInterval(function () {
-			addData(true);
-			myChart.setOption({
-				xAxis: {
-					data: date
-				},
-				series: [
-					{
-						name: '成交',
-						data: data
-					}
-				]
-			});
-		}, 500);
-	}
-
 	export function charts(node: HTMLElement) {
 		myChart = echarts.init(node, 'dark', { height: 500 });
 		myChart.setOption(option);
+	}
+
+	$: {
+		clearInterval(clear);
+		clear = setInterval(function () {
+			addData(WINDOW_SIZE);
+			myChart.setOption({
+				xAxis: {
+					data: data.x
+				},
+				series: [
+					{
+						data: data.y
+					}
+				]
+			});
+		}, UPDATE_INTERVAL);
 	}
 </script>
 
@@ -88,7 +100,5 @@
 	.container {
 		width: 100vw;
 		height: 500px;
-		margin: 0;
-		padding: 0;
 	}
 </style>
