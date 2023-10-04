@@ -30,7 +30,7 @@
 			trigger: 'axis'
 		},
 		legend: {
-			data: ['Actual']
+			data: ['Actual', 'Forecasted']
 		},
 		grid: {
 			left: '1%',
@@ -57,6 +57,16 @@
 				name: 'Actual',
 				showSymbol: false,
 				type: 'line',
+				stack: 'a',
+				data: data.y
+			},
+
+			{
+				name: 'Forecasted',
+				showSymbol: false,
+				type: 'line',
+				stack: 'a',
+				color: 'yellow',
 				data: data.y
 			}
 		]
@@ -79,6 +89,9 @@
 					data: data.x
 				},
 				series: [
+					{
+						data: data.y
+					},
 					{
 						data: data.y
 					}
