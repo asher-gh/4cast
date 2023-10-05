@@ -1,4 +1,4 @@
-<script lang="ts">
+<script>
 	import Chart from '$lib/Chart.svelte';
 	import { invoke } from '@tauri-apps/api/tauri';
 	import { open } from '@tauri-apps/api/dialog';
@@ -8,7 +8,7 @@
 	}
 
 	async function openCSV() {
-		const selected = await open({
+		const csv_path = await open({
 			multiple: false,
 			filters: [
 				{
@@ -17,11 +17,6 @@
 				}
 			]
 		});
-		console.log(selected);
-
-		if (!Array.isArray(selected) && selected != null) {
-			invoke('read_csv', { csvPath: selected });
-		}
 	}
 </script>
 
@@ -29,7 +24,6 @@
 	<h1>ICU Bed Forecasts</h1>
 	<Chart />
 	<button on:click={log}>Dump data</button>
-	<button on:click={openCSV}>Open CSV</button>
 </main>
 
 <style>
