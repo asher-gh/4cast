@@ -126,5 +126,4 @@ fn main() {
         .invoke_handler(tauri::generate_handler![add_data, log, read_csv])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
-    // read_csv().unwrap();
 }
