@@ -22,6 +22,18 @@
 				duration: 300,
 				easing: 'cubicOut'
 			},
+			dataZoom: [
+				{
+					type: 'slider',
+					start: 50,
+					end: 100
+				},
+				{
+					type: 'inside',
+					start: 0,
+					end: 10
+				}
+			],
 			tooltip: {
 				trigger: 'axis',
 				order: 'valueDesc'
@@ -32,7 +44,7 @@
 			grid: {
 				left: '0',
 				right: '1%',
-				bottom: '3%',
+				bottom: '10%',
 				containLabel: true
 			},
 			toolbox: {
@@ -49,7 +61,8 @@
 				data: data ? data.dates : []
 			},
 			yAxis: {
-				type: 'value'
+				type: 'value',
+				boundaryGap: [0, '100%']
 			},
 			series: [
 				{
