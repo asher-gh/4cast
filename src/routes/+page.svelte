@@ -21,10 +21,6 @@
 </main>
 
 <style>
-	h1 {
-		color: white;
-	}
-
 	:global(body) {
 		background-color: #100c2a;
 		margin: 0;
@@ -47,5 +43,9 @@
 
 	:global(button:active) {
 		background: white;
+	}
+
+	h1 {
+		color: white;
 	}
 </style>

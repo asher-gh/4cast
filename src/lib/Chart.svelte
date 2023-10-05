@@ -17,7 +17,11 @@
 		myChart = myChart || echarts.init(node, 'dark', { height: 500 });
 
 		let option: echarts.EChartsOption = {
-			animationDuration: 10000,
+			animationDuration: 5000,
+			stateAnimation: {
+				duration: 300,
+				easing: 'cubicOut'
+			},
 			tooltip: {
 				trigger: 'axis',
 				order: 'valueDesc'
@@ -33,6 +37,9 @@
 			},
 			toolbox: {
 				feature: {
+					dataZoom: {
+						yAxisIndex: 'none'
+					},
 					saveAsImage: {}
 				}
 			},
@@ -49,15 +56,13 @@
 					name: 'Actual',
 					showSymbol: false,
 					type: 'line',
-					// stack: 'a',
 					data: data ? data.beds_actual : []
 				},
 				{
 					name: 'Forecasted',
 					showSymbol: false,
 					type: 'line',
-					// stack: 'a',
-					color: 'red',
+					color: '#F2597F',
 					data: data ? data.beds_forecast : []
 				}
 			]
