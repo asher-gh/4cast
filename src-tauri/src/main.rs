@@ -1,25 +1,28 @@
 // Prevents additional console window on Windows in release, DO NOT REMOVE!!
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 #![allow(dead_code)]
-use chrono::{Datelike, Days, NaiveDate};
+
 use csv::Reader;
-use rand::prelude::{thread_rng, Rng};
 use serde::{Deserialize, Serialize};
-use std::{sync::Mutex, thread, time::Duration};
+use simple_moving_average::{SumTreeSMA, SMA};
+use std::sync::Mutex;
 use tauri::State;
 
-#[derive(Debug, Clone)]
+const SMA_WINDOW:usize = 2;
+
+#[derive(Debug, Clone, Default)]
 struct ChartData {
-    x: Vec<String>,
-    y: Vec<f64>,
-    now: NaiveDate,
-    bed_actual: Vec<Record>,
+    dates: Vec<String>,
+    // y: Vec<f64>,
+    beds_actual: Vec<u32>,
+    beds_forecast: Vec<u32>,
 }
 
 #[derive(Serialize)]
 struct CustomResp {
-    x: Vec<String>,
-    y: Vec<f64>,
+    dates: Vec<String>,
+    beds_actual: Vec<u32>,
+    beds_forecast: Vec<u32>,
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -40,37 +43,19 @@ impl serde::Serialize for Error {
 }
 
 impl ChartData {
-    fn new() -> Self {
-        let mut rng = thread_rng();
-        let now = NaiveDate::from_ymd_opt(2014, 9, 3).unwrap();
-        let y = vec![rng.gen::<f64>() * 150.];
-        let x: Vec<String> = vec![format!(
-            "{:02}/{:02}/{}",
-            now.day(),
-            now.month(),
-            now.year()
-        )];
-
-        ChartData {
-            x,
-            y,
-            now,
-            bed_actual: vec![],
-        }
-    }
-
-    fn add_data(&mut self) {
-        let mut rng = thread_rng();
-        self.now = self.now.checked_add_days(Days::new(1)).unwrap();
-        self.x.push(format!(
-            "{:02}/{:02}/{}",
-            self.now.day(),
-            self.now.month(),
-            self.now.year()
-        ));
-        self.y
-            .push(rng.gen_range(-0.4..0.6) + self.y.last().unwrap());
-    }
+    // fn add_data(&mut self) {
+    //     for rec in self.beds_actual
+    //     // let mut rng = thread_rng();
+    //     // self.now = self.now.checked_add_days(Days::new(1)).unwrap();
+    //     // self.x.push(format!(
+    //     //     "{:02}/{:02}/{}",
+    //     //     self.now.day(),
+    //     //     self.now.month(),
+    //     //     self.now.year()
+    //     // ));
+    //     // self.y
+    //     //     .push(rng.gen_range(-0.4..0.6) + self.y.last().unwrap());
+    // }
 }
 
 #[derive(Debug)]
@@ -82,18 +67,28 @@ fn log(state: tauri::State<AppState>) {
 }
 
 #[tauri::command]
-fn add_data(state: State<AppState>, shift: usize) -> CustomResp {
-    let mut data = state.0.lock().unwrap();
-    data.add_data();
-    let l = data.x.len();
-    let (x, y) = match shift {
+fn fetch_data(state: State<AppState>, shift: usize) -> CustomResp {
+    let data = state.0.lock().unwrap();
+    // data.add_data();
+    let l = data.dates.len();
+    let (dates, beds_actual, beds_forecast) = match shift {
         _ if shift > 0 && l > shift => (
-            (*data.x)[l - shift..].to_vec(),
-            (*data.y)[l - shift..].to_vec(),
+            (*data.dates)[l - shift..].to_vec(),
+            (*data.beds_actual)[l - shift..].to_vec(),
+            (*data.beds_forecast)[l - shift..].to_vec(),
         ),
-        _ => ((*data.x).to_vec(), (*data.y).to_vec()),
+        _ => (
+            (*data.dates).to_vec(),
+            (*data.beds_actual).to_vec(),
+            (*data.beds_forecast).to_vec(),
+        ),
     };
-    CustomResp { x, y }
+
+    CustomResp {
+        dates,
+        beds_actual,
+        beds_forecast,
+    }
 }
 
 #[derive(Debug, Deserialize, Clone)]
@@ -108,22 +103,32 @@ struct Record {
 async fn read_csv(state: State<'_, AppState>, csv_path: String) -> Result<(), Error> {
     // TODO: progress indicator
     let mut rdr = Reader::from_path(csv_path)?;
-    thread::sleep(Duration::from_secs(3));
-    let mut buffer = vec![];
+    let mut dates = vec![];
+    let mut beds_actual = vec![];
+    let mut beds_sma = SumTreeSMA::<_, f64, SMA_WINDOW>::new();
+    let mut beds_forecast = vec![];
     for res in rdr.deserialize() {
         let record: Record = res?;
         println!("{:?}", record);
-        buffer.push(record);
+        dates.push(record.date);
+        beds_actual.push(record.bed_count);
+        beds_sma.add_sample(record.bed_count as f64);
+        beds_forecast.push(beds_sma.get_average().ceil() as u32);
     }
+
     let mut data = state.0.lock().unwrap();
-    data.bed_actual = buffer;
+    *data = ChartData {
+        dates,
+        beds_actual,
+        beds_forecast,
+    };
     Ok(())
 }
 
 fn main() {
     tauri::Builder::default()
-        .manage(AppState(Mutex::new(ChartData::new())))
-        .invoke_handler(tauri::generate_handler![add_data, log, read_csv])
+        .manage(AppState(Default::default()))
+        .invoke_handler(tauri::generate_handler![log, read_csv, fetch_data])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

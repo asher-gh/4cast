@@ -1,49 +1,37 @@
 <script lang="ts">
 	import Chart from '$lib/Chart.svelte';
 	import { invoke } from '@tauri-apps/api/tauri';
-	import { open } from '@tauri-apps/api/dialog';
+	import type { PageData } from './$types';
+
+	export let data: PageData & {
+		dates: string[];
+		beds_actual: number[];
+		beds_forecast: number[];
+	};
 
 	async function log() {
 		await invoke('log');
-	}
-
-	async function openCSV() {
-		const selected = await open({
-			multiple: false,
-			filters: [
-				{
-					name: 'Data',
-					extensions: ['csv']
-				}
-			]
-		});
-		console.log(selected);
-
-		if (!Array.isArray(selected) && selected != null) {
-			invoke('read_csv', { csvPath: selected });
-		}
 	}
 </script>
 
 <main>
 	<h1>ICU Bed Forecasts</h1>
-	<Chart />
+	<Chart {data} />
 	<button on:click={log}>Dump data</button>
-	<button on:click={openCSV}>Open CSV</button>
 </main>
 
 <style>
-	:global(body) {
-		background-color: #100c2a;
-		margin: 0;
-		padding: 0;
-	}
-
 	h1 {
 		color: white;
 	}
 
-	button {
+	:global(body) {
+		background-color: #100c2a;
+		margin: 0;
+		padding: 10px;
+	}
+
+	:global(button) {
 		margin: 2rem 0 0 0;
 		font-weight: 500;
 		background: light-grey;
@@ -52,14 +40,12 @@
 		color: black;
 		padding: 0.5rem 1rem;
 	}
-	button:hover {
+
+	:global(button:hover) {
 		cursor: pointer;
 	}
-	button:active {
-		background: white;
-	}
 
-	main {
-		padding: 10px;
+	:global(button:active) {
+		background: white;
 	}
 </style>

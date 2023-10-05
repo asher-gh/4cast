@@ -71,6 +71,7 @@ dependencies = [
  "rand 0.8.5",
  "serde",
  "serde_json",
+ "simple_moving_average",
  "tauri",
  "tauri-build",
  "thiserror",
@@ -2457,6 +2458,15 @@ name = "simd-adler32"
 version = "0.3.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d66dc143e6b11c1eddc06d5c423cfc97062865baf299914ab64caa38182078fe"
+
+[[package]]
+name = "simple_moving_average"
+version = "0.1.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "cdd19d3808aad2604c824399fd270260d634678b010328c9d96851bb0fb63121"
+dependencies = [
+ "num-traits",
+]
 
 [[package]]
 name = "siphasher"
