@@ -5,12 +5,22 @@
 
 	let chart: HTMLElement;
 	let myChart: echarts.ECharts;
+
+	let forecast_algo:
+		| undefined
+		| {
+				name: string;
+				mad: number;
+				mape: number;
+		  };
 	export let data:
 		| undefined
 		| {
 				dates: string[];
 				beds_actual: number[];
 				beds_forecast: number[];
+				mad: number;
+				mape: number;
 		  };
 
 	export function initChart(node: HTMLElement) {
@@ -99,6 +109,11 @@
 			await invoke('read_csv', { csvPath: selected });
 			data = await invoke('fetch_data', { shift: 0 });
 			initChart(chart);
+			forecast_algo = {
+				name: 'SMA',
+				mad: data!.mad,
+				mape: data!.mape
+			};
 		}
 	}
 </script>
@@ -111,10 +126,22 @@
 
 <div class="container" bind:this={chart} use:initChart />
 <button on:click={openCSV}>Load</button>
+<button on:click={() => console.log(data)}>Log fetch response</button>
+{#if forecast_algo}
+<pre><code>
+   Alogrithm: {forecast_algo.name}
+   MAD: {forecast_algo.mad.toFixed(2)}
+   MAPE: {forecast_algo.mape.toFixed(2)}%
+</code></pre>
+{/if}
 
 <style>
 	.container {
 		width: 100%;
 		height: 500px;
+	}
+	pre {
+		color: #ccc;
+      font-size: 1.5rem;
 	}
 </style>

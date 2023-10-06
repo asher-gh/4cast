@@ -1,23 +1,28 @@
 <script lang="ts">
 	import Chart from '$lib/Chart.svelte';
-	import { invoke } from '@tauri-apps/api/tauri';
+	// import { invoke } from '@tauri-apps/api/tauri';
 	import type { PageData } from './$types';
 
 	export let data: PageData & {
 		dates: string[];
 		beds_actual: number[];
 		beds_forecast: number[];
+		mad: number;
+		mape: number;
 	};
 
-	async function log() {
-		await invoke('log');
-	}
+	// async function log() {
+	// 	await invoke('log');
+	// }
+	// function log() {
+	// 	console.log(data);
+	// }
 </script>
 
 <main>
 	<h1>ICU Bed Forecasts</h1>
 	<Chart {data} />
-	<button on:click={log}>Dump data</button>
+	<!-- <button on:click={log}>Dump data</button> -->
 </main>
 
 <style>
