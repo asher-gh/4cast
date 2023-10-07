@@ -1,8 +1,9 @@
 use serde::Serialize;
 use std::sync::Mutex;
-pub mod chart;
-use crate::chart::ChartData;
-
+pub mod forecast;
+pub use forecast::ChartData;
+pub mod handlers;
+pub use handlers::{fetch_data, log, read_csv};
 
 pub fn mad_mape(actual: &[u32], forecast: &[u32]) -> (f32, f32) {
     let (mut mad, mut mape, l) = (0_u32, 0_u32, actual.len() as f32);
@@ -10,10 +11,10 @@ pub fn mad_mape(actual: &[u32], forecast: &[u32]) -> (f32, f32) {
     for (act, fore) in actual.iter().zip(forecast) {
         let diff = act.abs_diff(*fore);
         mad += diff;
-        mape += ((diff as f32 / *act as f32) * 10000.0) as u32 ;
+        mape += ((diff as f32 / *act as f32) * 10000.0) as u32;
     }
 
-    (mad as f32 / l, mape as f32/ (l*100.))
+    (mad as f32 / l, mape as f32 / (l * 100.))
 }
 
 #[derive(Serialize)]
@@ -44,9 +45,6 @@ impl serde::Serialize for Error {
 
 #[derive(Debug)]
 pub struct AppState(pub Mutex<ChartData>);
-
-
-
 
 #[cfg(test)]
 mod tests {

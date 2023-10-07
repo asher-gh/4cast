@@ -1,8 +1,9 @@
-use app::{chart::ChartData, mad_mape, AppState, CustomResp, Error};
 use csv::Reader;
 use serde::Deserialize;
 use simple_moving_average::{SumTreeSMA, SMA};
 use tauri::State;
+
+use crate::{mad_mape, AppState, CustomResp, Error};
 
 const SMA_WINDOW: usize = 2;
 
@@ -66,7 +67,7 @@ pub async fn read_csv(state: State<'_, AppState>, csv_path: String) -> Result<()
     }
 
     let mut data = state.0.lock().unwrap();
-    *data = ChartData {
+    *data = crate::ChartData {
         dates,
         beds_actual,
         beds_forecast,

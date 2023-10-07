@@ -2,10 +2,11 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 #![allow(dead_code)]
 
-mod chart;
-mod handlers;
-use crate::handlers::{fetch_data, log, read_csv};
-use app::AppState;
+use app::{
+    fetch_data,
+    handlers::{__cmd__fetch_data, __cmd__log, __cmd__read_csv},
+    log, read_csv, AppState,
+};
 
 fn main() {
     tauri::Builder::default()
