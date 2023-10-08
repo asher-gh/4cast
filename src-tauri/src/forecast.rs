@@ -1,7 +1,7 @@
-use std::fs::File;
-
 use csv::Reader;
 use simple_moving_average::{SumTreeSMA, SMA};
+use std::fs::File;
+use tfhe::integer::{RadixCiphertext, ServerKey};
 
 use crate::{Error, Record, SMA_WINDOW};
 
@@ -45,9 +45,47 @@ pub fn sma(mut rdr: Reader<File>) -> Result<FCData, Error> {
     })
 }
 
+fn fhe_mean(arr: &mut [RadixCiphertext], sk: &ServerKey) -> RadixCiphertext {
+    let mut sum = sk.create_trivial_zero_radix(4);
+    for n in arr.iter_mut() {
+        sk.smart_add_assign(&mut sum, n);
+    }
+    match arr.len() {
+        x if x > 0 => sk.smart_scalar_div_parallelized(&mut sum, x as u64),
+        _ => sum,
+    }
+}
+
+// pub fn fhe_sma(arr: &[u32], window_size: usize) -> u32 {
+//     let config = ConfigBuilder::all_disabled()
+//         .enable_default_integers()
+//         .build();
+//
+//     let (client_key, server_key) = generate_keys(config);
+//     let mut buffer = vec![];
+//     set_server_key(server_key);
+//
+//     let a = 120u32;
+//     let enc_a = FheUint32::try_encrypt(a, &client_key).unwrap();
+//     buffer.push(enc_a);
+//
+//     // for a in arr {
+//     //     buffer.push(FheUint32::try_encrypt(a, &client_key));
+//     // }
+//
+//     unimplemented!();
+// }
+
 #[cfg(test)]
 mod tests {
     use std::rc::Rc;
+
+    use tfhe::{
+        integer::{
+            gen_keys_radix, parameters::PARAM_MESSAGE_2_CARRY_2_KS_PBS_32_BITS, RadixClientKey,
+        },
+        shortint::prelude::PARAM_MESSAGE_2_CARRY_2_KS_PBS,
+    };
 
     use super::*;
 
@@ -61,5 +99,16 @@ mod tests {
 
         assert!((mad - 6.25).abs() < E);
         assert!((mape - 6.4125).abs() < E);
+    }
+
+    #[test]
+    fn test_fhe_mean() {
+        // 2 * 4 = 8 bits of message
+        let num_block = 4;
+        let (cks, sks) = gen_keys_radix(PARAM_MESSAGE_2_CARRY_2_KS_PBS, num_block);
+        let mut arr: Vec<RadixCiphertext> = [1, 2, 3].iter().map(|x| cks.encrypt(*x)).collect();
+        let mean = fhe_mean(&mut arr, &sks);
+        let dec: u32 = cks.decrypt(&mean);
+        assert_eq!(dec, 2);
     }
 }
