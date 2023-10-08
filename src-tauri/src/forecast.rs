@@ -1,9 +1,11 @@
+use crate::{Error, Record, SMA_WINDOW};
 use csv::Reader;
 use simple_moving_average::{SumTreeSMA, SMA};
 use std::fs::File;
-use tfhe::integer::{RadixCiphertext, ServerKey};
-
-use crate::{Error, Record, SMA_WINDOW};
+use sunscreen::{
+    fhe_program,
+    types::{bfv::Fractional, Cipher},
+};
 
 #[derive(Debug, Clone, Default)]
 pub struct FCData {
@@ -14,13 +16,11 @@ pub struct FCData {
 
 pub fn mad_mape(actual: &[u32], forecast: &[u32]) -> (f32, f32) {
     let (mut mad, mut mape, l) = (0_u32, 0_u32, actual.len() as f32);
-
     for (act, fore) in actual.iter().zip(forecast) {
         let diff = act.abs_diff(*fore);
         mad += diff;
         mape += ((diff as f32 / *act as f32) * 10000.0) as u32;
     }
-
     (mad as f32 / l, mape as f32 / (l * 100.))
 }
 
@@ -45,49 +45,18 @@ pub fn sma(mut rdr: Reader<File>) -> Result<FCData, Error> {
     })
 }
 
-fn fhe_mean(arr: &mut [RadixCiphertext], sk: &ServerKey) -> RadixCiphertext {
-    let mut sum = sk.create_trivial_zero_radix(4);
-    for n in arr.iter_mut() {
-        sk.smart_add_assign(&mut sum, n);
-    }
-    match arr.len() {
-        x if x > 0 => sk.smart_scalar_div_parallelized(&mut sum, x as u64),
-        _ => sum,
-    }
+#[fhe_program(scheme = "bfv")]
+fn fhe_mean(nums: [Cipher<Fractional<64>>; SMA_WINDOW]) -> Cipher<Fractional<64>> {
+    let sum = nums.into_iter().reduce(move |a, e| a + e).unwrap();
+    sum / (SMA_WINDOW as f64)
 }
-
-// pub fn fhe_sma(arr: &[u32], window_size: usize) -> u32 {
-//     let config = ConfigBuilder::all_disabled()
-//         .enable_default_integers()
-//         .build();
-//
-//     let (client_key, server_key) = generate_keys(config);
-//     let mut buffer = vec![];
-//     set_server_key(server_key);
-//
-//     let a = 120u32;
-//     let enc_a = FheUint32::try_encrypt(a, &client_key).unwrap();
-//     buffer.push(enc_a);
-//
-//     // for a in arr {
-//     //     buffer.push(FheUint32::try_encrypt(a, &client_key));
-//     // }
-//
-//     unimplemented!();
-// }
 
 #[cfg(test)]
 mod tests {
-    use std::rc::Rc;
-
-    use tfhe::{
-        integer::{
-            gen_keys_radix, parameters::PARAM_MESSAGE_2_CARRY_2_KS_PBS_32_BITS, RadixClientKey,
-        },
-        shortint::prelude::PARAM_MESSAGE_2_CARRY_2_KS_PBS,
-    };
-
     use super::*;
+    use crate::vec_to_arr;
+    use std::rc::Rc;
+    use sunscreen::{Compiler, FheProgramInput, FheRuntime};
 
     #[test]
     fn test_mad_mape() {
@@ -103,12 +72,30 @@ mod tests {
 
     #[test]
     fn test_fhe_mean() {
-        // 2 * 4 = 8 bits of message
-        let num_block = 4;
-        let (cks, sks) = gen_keys_radix(PARAM_MESSAGE_2_CARRY_2_KS_PBS, num_block);
-        let mut arr: Vec<RadixCiphertext> = [1, 2, 3].iter().map(|x| cks.encrypt(*x)).collect();
-        let mean = fhe_mean(&mut arr, &sks);
-        let dec: u32 = cks.decrypt(&mean);
-        assert_eq!(dec, 2);
+        // fake data
+        let data = vec![100., 150., 200., 250.];
+        // setup
+        let app = Compiler::new().fhe_program(fhe_mean).compile().unwrap();
+        let runtime = FheRuntime::new(app.params()).unwrap();
+        let (pub_key, prv_key) = runtime.generate_keys().unwrap();
+        // input
+        let input = vec_to_arr(
+            data[..SMA_WINDOW]
+                .into_iter()
+                .map(|x| Fractional::<64>::from(*x))
+                .collect(),
+        );
+        // encrypted input
+        let args: Vec<FheProgramInput> = vec![runtime.encrypt(input, &pub_key).unwrap().into()];
+        // calling encrypted program with encrypted args
+        let res_enc = runtime
+            .run(app.get_fhe_program(fhe_mean).unwrap(), args, &pub_key)
+            .unwrap();
+        // decrypting the result
+        let res_dec: Fractional<64> = runtime.decrypt(&res_enc[0], &prv_key).unwrap();
+        // (100.0 + 150.0) / 2 = 125.0
+        let diff: f64 = (res_dec - 125.0).abs();
+        let e = 1e-10;
+        assert!(diff < e);
     }
 }

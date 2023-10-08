@@ -43,3 +43,14 @@ impl serde::Serialize for Error {
 
 #[derive(Debug)]
 pub struct AppState(pub Mutex<FCData>);
+
+pub fn vec_to_arr<T>(v: Vec<T>) -> [T; SMA_WINDOW] {
+    // TODO: handle edge cases
+    v.try_into().unwrap_or_else(|v: Vec<T>| {
+        panic!(
+            "Expected a Vec of length {} but it was {}",
+            SMA_WINDOW,
+            v.len()
+        )
+    })
+}
