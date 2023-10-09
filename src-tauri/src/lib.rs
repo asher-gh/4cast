@@ -30,6 +30,10 @@ pub enum Error {
     Io(#[from] std::io::Error),
     #[error(transparent)]
     CSV(#[from] csv::Error),
+    #[error(transparent)]
+    FheRuntime(#[from] sunscreen::RuntimeError),
+    #[error(transparent)]
+    Sunscreen(#[from] sunscreen::Error),
 }
 
 impl serde::Serialize for Error {

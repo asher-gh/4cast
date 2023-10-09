@@ -2,8 +2,8 @@ use criterion::{criterion_group, criterion_main, Criterion};
 use tfhe::{generate_keys, Config, ConfigBuilder};
 
 // TODO: bench: key pair generation
-// TODO: bench: encryption/decryption
-// TODO: bench: Forecast calculations
+// TODO: bench: how does vector encryption scale
+// TODO: bench: mean calculation
 
 fn criterion_benchmark(c: &mut Criterion) {
     c.bench_function("key generation", |b| {

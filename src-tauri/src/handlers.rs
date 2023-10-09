@@ -1,7 +1,10 @@
-use crate::{forecast::sma, mad_mape, AppState, CustomResp, Error};
+use crate::{
+    forecast::{enc_sma, naive_sma, sma},
+    mad_mape, AppState, CustomResp, Error,
+};
 use csv::Reader;
+use std::time::Instant;
 use tauri::State;
-
 #[tauri::command]
 pub fn log(state: tauri::State<AppState>) {
     dbg!(state);
@@ -40,7 +43,10 @@ pub async fn read_csv(state: State<'_, AppState>, csv_path: String) -> Result<()
     // TODO: progress indicator
     // TODO: Validate data when reading CSV
     let rdr = Reader::from_path(csv_path)?;
+    // let rdr = Reader::from_reader(bed_data.as_bytes());
     let mut data = state.0.lock().unwrap();
-    *data = sma(rdr)?;
+    let start = Instant::now();
+    *data = enc_sma(rdr)?;
+    dbg!(start.elapsed().as_millis());
     Ok(())
 }
