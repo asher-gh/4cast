@@ -5,7 +5,7 @@ pub use forecast::{mad_mape, FCData};
 pub mod handlers;
 pub use handlers::{fetch_data, log, read_csv};
 
-const SMA_WINDOW: usize = 2;
+pub const SMA_WINDOW: usize = 2;
 
 #[derive(Serialize)]
 pub struct CustomResp {
@@ -17,11 +17,11 @@ pub struct CustomResp {
 }
 
 #[derive(Debug, Deserialize, Clone)]
-struct Record {
+pub struct Record {
     #[serde(rename = "Date")]
-    date: String,
+    pub date: String,
     #[serde(rename = "Beds(England)")]
-    bed_count: u32,
+    pub bed_count: u32,
 }
 
 #[derive(Debug, thiserror::Error)]

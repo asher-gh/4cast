@@ -16,9 +16,9 @@ without `rustc`'s `release` optimisations.
 
 | Function     | Time(ms) |
 | ------------ | -------- |
-| `naive_sma`  | 15       |
-| `SumTreeSMA` | 1        |
-| `enc_sma`    | 65400    |
+| `naive_sma`  | 14.6     |
+| `SumTreeSMA` | 0.8      |
+| `enc_sma`    | 531.8    |
 
 [NHS data]: https://www.england.nhs.uk/statistics/statistical-work-areas/covid-19-hospital-activity/
 [4cast]: https://github.com/asher-gh/4cast/assets/74317567/497ed0cf-dcd3-4bb9-9211-e9594d7dd9cf

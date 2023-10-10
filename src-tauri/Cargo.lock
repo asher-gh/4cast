@@ -80,6 +80,7 @@ dependencies = [
  "serde_json",
  "simple_moving_average",
  "sunscreen",
+ "sunscreen_runtime",
  "tauri",
  "tauri-build",
  "thiserror",

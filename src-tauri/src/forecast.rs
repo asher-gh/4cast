@@ -5,8 +5,9 @@ use std::io::Read;
 use sunscreen::{
     fhe_program,
     types::{bfv::Fractional, Cipher},
-    Compiler, FheProgramInput, FheRuntime,
+    Application, Compiler, FheProgramInput, FheRuntime,
 };
+use sunscreen_runtime::{Fhe, GenericRuntime, PrivateKey, PublicKey};
 // TODO: refactor: encapsulate encryption setup and key and program storage
 
 #[derive(Debug, Clone, Default)]
@@ -68,16 +69,10 @@ pub fn naive_sma<R: Read>(mut rdr: Reader<R>) -> Result<FCData, Error> {
     Ok(data)
 }
 
-pub fn enc_sma<R: Read>(mut rdr: Reader<R>) -> Result<FCData, Error> {
-    // OPTIMIZE: cache sum
+pub fn enc_sma<R: Read>(fnin: &mut EncSMAInput<R>) -> Result<FCData, Error> {
     let mut data = FCData::default();
-    let app = Compiler::new().fhe_program(fhe_mean).compile()?;
-    let runtime = FheRuntime::new(app.params())?;
-    let (pub_key, priv_key) = runtime.generate_keys()?;
-
-    for res in rdr.deserialize() {
+    for res in fnin.rdr.deserialize() {
         let rec: Record = res?;
-        // dbg!(&rec);
         data.dates.push(rec.date);
         data.beds_actual.push(rec.bed_count);
         let l = data.beds_actual.len();
@@ -89,12 +84,14 @@ pub fn enc_sma<R: Read>(mut rdr: Reader<R>) -> Result<FCData, Error> {
                     .map(|x| Fractional::<64>::from(x as f64))
                     .collect(),
             );
-
-            let args: Vec<FheProgramInput> = vec![runtime.encrypt(input, &pub_key)?.into()];
-            let res_enc = runtime.run(app.get_fhe_program(fhe_mean).unwrap(), args, &pub_key)?;
-
-            let res: Fractional<64> = runtime.decrypt(&res_enc[0], &priv_key)?;
-
+            let args: Vec<FheProgramInput> =
+                vec![fnin.runtime.encrypt(input, &fnin.pub_key)?.into()];
+            let res_enc = fnin.runtime.run(
+                fnin.app.get_fhe_program(fhe_mean).unwrap(),
+                args,
+                &fnin.pub_key,
+            )?;
+            let res: Fractional<64> = fnin.runtime.decrypt(&res_enc[0], &fnin.priv_key)?;
             res.ceil() as u32
         } else {
             if let Some(x) = data.beds_actual.last() {
@@ -108,8 +105,31 @@ pub fn enc_sma<R: Read>(mut rdr: Reader<R>) -> Result<FCData, Error> {
     Ok(data)
 }
 
+pub struct EncSMAInput<R: Read> {
+    pub rdr: Reader<R>,
+    pub app: Application<Fhe>,
+    pub runtime: GenericRuntime<Fhe, ()>,
+    pub pub_key: PublicKey,
+    pub priv_key: PrivateKey,
+}
+
+impl<R: Read> EncSMAInput<R> {
+    pub fn new(rdr: Reader<R>) -> Self {
+        let app = Compiler::new().fhe_program(fhe_mean).compile().unwrap();
+        let runtime = FheRuntime::new(app.params()).unwrap();
+        let (pub_key, priv_key) = runtime.generate_keys().unwrap();
+        EncSMAInput {
+            rdr,
+            app,
+            runtime,
+            pub_key,
+            priv_key,
+        }
+    }
+}
+
 #[fhe_program(scheme = "bfv")]
-fn fhe_mean(nums: [Cipher<Fractional<64>>; SMA_WINDOW]) -> Cipher<Fractional<64>> {
+pub fn fhe_mean(nums: [Cipher<Fractional<64>>; SMA_WINDOW]) -> Cipher<Fractional<64>> {
     let sum = nums.into_iter().reduce(move |a, e| a + e).unwrap();
     sum / (SMA_WINDOW as f64)
 }
@@ -208,7 +228,10 @@ mod tests {
             })
             .collect();
 
-        let res = enc_sma(csv::Reader::from_reader(bed_data.as_bytes())).unwrap();
+        let rdr = csv::Reader::from_reader(bed_data.as_bytes());
+        let mut input = EncSMAInput::new(rdr);
+
+        let res = enc_sma(&mut input).unwrap();
         dbg!(&bed_forecast, &res.beds_forecast);
 
         for (i, x) in bed_forecast.iter().enumerate() {

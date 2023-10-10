@@ -1,5 +1,5 @@
 use crate::{
-    forecast::{enc_sma, naive_sma, sma},
+    forecast::{enc_sma, EncSMAInput},
     mad_mape, AppState, CustomResp, Error,
 };
 use csv::Reader;
@@ -46,7 +46,8 @@ pub async fn read_csv(state: State<'_, AppState>, csv_path: String) -> Result<()
     // let rdr = Reader::from_reader(bed_data.as_bytes());
     let mut data = state.0.lock().unwrap();
     let start = Instant::now();
-    *data = enc_sma(rdr)?;
+    let mut input = EncSMAInput::new(rdr);
+    *data = enc_sma(&mut input)?;
     dbg!(start.elapsed().as_millis());
     Ok(())
 }
