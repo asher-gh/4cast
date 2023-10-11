@@ -8,7 +8,6 @@ use sunscreen::{
     Application, Compiler, FheProgramInput, FheRuntime,
 };
 use sunscreen_runtime::{Fhe, GenericRuntime, PrivateKey, PublicKey};
-// TODO: refactor: encapsulate encryption setup and key and program storage
 
 #[derive(Debug, Clone, Default)]
 pub struct FCData {
@@ -69,56 +68,60 @@ pub fn naive_sma<R: Read>(mut rdr: Reader<R>) -> Result<FCData, Error> {
     Ok(data)
 }
 
-pub fn enc_sma<R: Read>(fnin: &mut EncSMAInput<R>) -> Result<FCData, Error> {
+pub fn enc_sma<R: Read>(fnin: &mut FheProgramState<R>) -> Result<FCData, Error> {
     let mut data = FCData::default();
-    for res in fnin.rdr.deserialize() {
-        let rec: Record = res?;
-        data.dates.push(rec.date);
-        data.beds_actual.push(rec.bed_count);
-        let l = data.beds_actual.len();
-        data.beds_forecast.push(if l > SMA_WINDOW {
-            let x = &data.beds_actual[l - SMA_WINDOW - 1..l - 1];
-            let input = vec_to_arr(
-                x.to_vec()
-                    .into_iter()
-                    .map(|x| Fractional::<64>::from(x as f64))
-                    .collect(),
-            );
-            let args: Vec<FheProgramInput> =
-                vec![fnin.runtime.encrypt(input, &fnin.pub_key)?.into()];
-            let res_enc = fnin.runtime.run(
-                fnin.app.get_fhe_program(fhe_mean).unwrap(),
-                args,
-                &fnin.pub_key,
-            )?;
-            let res: Fractional<64> = fnin.runtime.decrypt(&res_enc[0], &fnin.priv_key)?;
-            res.ceil() as u32
-        } else {
-            if let Some(x) = data.beds_actual.last() {
-                (*x).clone()
+    if let Some(ref mut rdr) = &mut fnin.rdr {
+        for res in rdr.deserialize() {
+            let rec: Record = res?;
+            data.dates.push(rec.date);
+            data.beds_actual.push(rec.bed_count);
+            let l = data.beds_actual.len();
+            data.beds_forecast.push(if l > SMA_WINDOW {
+                let x = &data.beds_actual[l - SMA_WINDOW - 1..l - 1];
+                let input = vec_to_arr(
+                    x.to_vec()
+                        .into_iter()
+                        .map(|x| Fractional::<64>::from(x as f64))
+                        .collect(),
+                );
+                let args: Vec<FheProgramInput> =
+                    vec![fnin.runtime.encrypt(input, &fnin.pub_key)?.into()];
+                let res_enc = fnin.runtime.run(
+                    fnin.app.get_fhe_program(fhe_mean).unwrap(),
+                    args,
+                    &fnin.pub_key,
+                )?;
+                let res: Fractional<64> = fnin.runtime.decrypt(&res_enc[0], &fnin.priv_key)?;
+                res.ceil() as u32
             } else {
-                0
-            }
-        });
-    }
+                if let Some(x) = data.beds_actual.last() {
+                    (*x).clone()
+                } else {
+                    0
+                }
+            });
+        }
 
-    Ok(data)
+        Ok(data)
+    } else {
+        panic!("CSV reader failed")
+    }
 }
 
-pub struct EncSMAInput<R: Read> {
-    pub rdr: Reader<R>,
+pub struct FheProgramState<R: Read> {
+    pub rdr: Option<Reader<R>>,
     pub app: Application<Fhe>,
     pub runtime: GenericRuntime<Fhe, ()>,
     pub pub_key: PublicKey,
     pub priv_key: PrivateKey,
 }
 
-impl<R: Read> EncSMAInput<R> {
-    pub fn new(rdr: Reader<R>) -> Self {
+impl<R: Read> FheProgramState<R> {
+    pub fn new(rdr: Option<Reader<R>>) -> Self {
         let app = Compiler::new().fhe_program(fhe_mean).compile().unwrap();
         let runtime = FheRuntime::new(app.params()).unwrap();
         let (pub_key, priv_key) = runtime.generate_keys().unwrap();
-        EncSMAInput {
+        FheProgramState {
             rdr,
             app,
             runtime,
@@ -229,7 +232,7 @@ mod tests {
             .collect();
 
         let rdr = csv::Reader::from_reader(bed_data.as_bytes());
-        let mut input = EncSMAInput::new(rdr);
+        let mut input = FheProgramState::new(Some(rdr));
 
         let res = enc_sma(&mut input).unwrap();
         dbg!(&bed_forecast, &res.beds_forecast);

@@ -2,16 +2,22 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 #![allow(dead_code)]
 
+use std::sync::Mutex;
+
 use app::{
     fetch_data,
-    handlers::{__cmd__fetch_data, __cmd__log, __cmd__read_csv},
-    log, read_csv, AppState,
+    forecast::FheProgramState,
+    handlers::{__cmd__fetch_data, __cmd__read_csv},
+    read_csv, AppState,
 };
 
 fn main() {
     tauri::Builder::default()
-        .manage(AppState(Default::default()))
-        .invoke_handler(tauri::generate_handler![log, read_csv, fetch_data])
+        .manage(AppState {
+            fc_data: Default::default(),
+            fhe_runtime: Mutex::new(FheProgramState::new(None)),
+        })
+        .invoke_handler(tauri::generate_handler![read_csv, fetch_data])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

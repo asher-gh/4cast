@@ -1,18 +1,18 @@
-use crate::{
-    forecast::{enc_sma, EncSMAInput},
-    mad_mape, AppState, CustomResp, Error,
-};
+use crate::{forecast::enc_sma, mad_mape, AppState, CustomResp, Error};
 use csv::Reader;
 use std::time::Instant;
 use tauri::State;
-#[tauri::command]
-pub fn log(state: tauri::State<AppState>) {
-    dbg!(state);
-}
+
+// FIX: better state logging
+//
+// #[tauri::command]
+// pub fn log(state: tauri::State<AppState>) {
+// dbg!(state);
+// }
 
 #[tauri::command]
 pub fn fetch_data(state: State<AppState>, shift: usize) -> CustomResp {
-    let data = state.0.lock().unwrap();
+    let data = state.fc_data.lock().unwrap();
     let l = data.dates.len();
     let (dates, beds_actual, beds_forecast) = match shift {
         _ if shift > 0 && l > shift => (
@@ -41,13 +41,17 @@ pub fn fetch_data(state: State<AppState>, shift: usize) -> CustomResp {
 #[tauri::command]
 pub async fn read_csv(state: State<'_, AppState>, csv_path: String) -> Result<(), Error> {
     // TODO: progress indicator
-    // TODO: Validate data when reading CSV
-    let rdr = Reader::from_path(csv_path)?;
-    // let rdr = Reader::from_reader(bed_data.as_bytes());
-    let mut data = state.0.lock().unwrap();
+    // FIX: Invalidate CSV breaks the program
+
     let start = Instant::now();
-    let mut input = EncSMAInput::new(rdr);
+
+    let mut input = state.fhe_runtime.lock().unwrap();
+    input.rdr = Some(Reader::from_path(csv_path)?);
+
+    let mut data = state.fc_data.lock().unwrap();
     *data = enc_sma(&mut input)?;
+
     dbg!(start.elapsed().as_millis());
+
     Ok(())
 }

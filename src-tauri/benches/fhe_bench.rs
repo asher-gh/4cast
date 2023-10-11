@@ -1,10 +1,8 @@
-use app::forecast::{enc_sma, EncSMAInput};
+use app::forecast::{enc_sma, FheProgramState};
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 use csv::Reader;
 
-fn bench(c: &mut Criterion) {
-    let bed_data = String::from(
-        "Date,Beds(England)
+const DATA: &str = "Date,Beds(England)
 1-Aug-20,879
 2-Aug-20,847
 3-Aug-20,842
@@ -22,18 +20,28 @@ fn bench(c: &mut Criterion) {
 15-Aug-20,630
 16-Aug-20,634
 17-Aug-20,626
-18-Aug-20,597",
-    );
+18-Aug-20,597";
 
+fn bench_init(c: &mut Criterion) {
+    c.bench_function("Fhe Init", |b| {
+        // input.rdr = Reader::from_reader(bed_data.as_bytes());
+        b.iter(|| {
+            let rdr = Reader::from_reader(DATA.as_bytes());
+            let _ = FheProgramState::new(black_box(Some(rdr)));
+        })
+    });
+}
+
+fn bench_enc_sma(c: &mut Criterion) {
     // Initialise FHE
-    let rdr = Reader::from_reader(bed_data.as_bytes());
-    let mut input = EncSMAInput::new(rdr);
+    let rdr = Reader::from_reader(DATA.as_bytes());
+    let mut input = FheProgramState::new(Some(rdr));
 
     c.bench_function("Encrypted SMA", |b| {
-        input.rdr = Reader::from_reader(bed_data.as_bytes());
+        input.rdr = Some(Reader::from_reader(DATA.as_bytes()));
         b.iter(|| enc_sma(black_box(&mut input)).unwrap())
     });
 }
 
-criterion_group!(benches, bench);
+criterion_group!(benches, bench_init, bench_enc_sma);
 criterion_main!(benches);

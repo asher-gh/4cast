@@ -1,9 +1,10 @@
+use forecast::FheProgramState;
 use serde::{Deserialize, Serialize};
-use std::sync::Mutex;
+use std::{fs::File, sync::Mutex};
 pub mod forecast;
 pub use forecast::{mad_mape, FCData};
 pub mod handlers;
-pub use handlers::{fetch_data, log, read_csv};
+pub use handlers::{fetch_data, read_csv};
 
 pub const SMA_WINDOW: usize = 2;
 
@@ -45,8 +46,10 @@ impl serde::Serialize for Error {
     }
 }
 
-#[derive(Debug)]
-pub struct AppState(pub Mutex<FCData>);
+pub struct AppState {
+    pub fc_data: Mutex<FCData>,
+    pub fhe_runtime: Mutex<FheProgramState<File>>,
+}
 
 pub fn vec_to_arr<T>(v: Vec<T>) -> [T; SMA_WINDOW] {
     // TODO: handle edge cases
