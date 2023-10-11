@@ -1,13 +1,17 @@
+#![allow(unused)]
 use crate::{vec_to_arr, Error, Record, SMA_WINDOW};
 use csv::Reader;
 use simple_moving_average::{SumTreeSMA, SMA};
-use std::io::Read;
+use std::{default, fs::File, io::Read};
 use sunscreen::{
     fhe_program,
     types::{bfv::Fractional, Cipher},
     Application, Compiler, FheProgramInput, FheRuntime,
 };
-use sunscreen_runtime::{Fhe, GenericRuntime, PrivateKey, PublicKey};
+use sunscreen_runtime::{
+    Ciphertext, Fhe, FheProgramInputTrait, GenericRuntime, PrivateKey, PublicKey, TryIntoPlaintext,
+    TypeName,
+};
 
 #[derive(Debug, Clone, Default)]
 pub struct FCData {
@@ -68,43 +72,167 @@ pub fn naive_sma<R: Read>(mut rdr: Reader<R>) -> Result<FCData, Error> {
     Ok(data)
 }
 
-pub fn enc_sma<R: Read>(fnin: &mut FheProgramState<R>) -> Result<FCData, Error> {
+pub fn enc_sma<R: Read>(fhe_prog: &mut FheProgramState<R>) -> Result<FCData, Error> {
     let mut data = FCData::default();
-    if let Some(ref mut rdr) = &mut fnin.rdr {
-        for res in rdr.deserialize() {
-            let rec: Record = res?;
-            data.dates.push(rec.date);
-            data.beds_actual.push(rec.bed_count);
-            let l = data.beds_actual.len();
-            data.beds_forecast.push(if l > SMA_WINDOW {
-                let x = &data.beds_actual[l - SMA_WINDOW - 1..l - 1];
-                let input = vec_to_arr(
-                    x.to_vec()
-                        .into_iter()
-                        .map(|x| Fractional::<64>::from(x as f64))
-                        .collect(),
-                );
-                let args: Vec<FheProgramInput> =
-                    vec![fnin.runtime.encrypt(input, &fnin.pub_key)?.into()];
-                let res_enc = fnin.runtime.run(
-                    fnin.app.get_fhe_program(fhe_mean).unwrap(),
-                    args,
-                    &fnin.pub_key,
-                )?;
-                let res: Fractional<64> = fnin.runtime.decrypt(&res_enc[0], &fnin.priv_key)?;
-                res.ceil() as u32
-            } else {
-                if let Some(x) = data.beds_actual.last() {
-                    (*x).clone()
-                } else {
-                    0
-                }
-            });
-        }
+    let mut sma = F64SumSMA::new(SMA_WINDOW, fhe_prog);
 
-        Ok(data)
-    } else {
-        panic!("CSV reader failed")
+    for res in sma.fhe_prog.rdr.as_mut().unwrap().deserialize() {
+        let rec: Record = res?;
+        data.dates.push(rec.date);
+        data.beds_actual.push(rec.bed_count);
+    }
+
+    for x in &data.beds_actual[..SMA_WINDOW] {
+        sma.push(Fractional::<64>::from(*x as f64));
+        data.beds_forecast.push(*x);
+    }
+
+    for x in &data.beds_actual[SMA_WINDOW..] {
+        data.beds_forecast.push(sma.mean().ceil() as u32);
+        sma.push(Fractional::<64>::from(*x as f64));
+    }
+
+    Ok(data)
+}
+
+#[fhe_program(scheme = "bfv")]
+fn f64_sum(
+    cipher: Cipher<Fractional<64>>,
+    scalar: Cipher<Fractional<64>>,
+) -> Cipher<Fractional<64>> {
+    // Fractional only support division by literals
+    cipher + scalar
+}
+#[fhe_program(scheme = "bfv")]
+fn f64_sub(a: Cipher<Fractional<64>>, b: Cipher<Fractional<64>>) -> Cipher<Fractional<64>> {
+    // Fractional only support division by literals
+    a - b
+}
+#[fhe_program(scheme = "bfv")]
+fn f64_div(cipher: Cipher<Fractional<64>>) -> Cipher<Fractional<64>> {
+    // Fractional only support division by literals
+    cipher / SMA_WINDOW as f64
+}
+
+// TODO: remove this allow
+#[allow(dead_code)]
+pub struct F64SumSMA<'a, R: Read> {
+    sum: Option<Ciphertext>,
+    mean: Option<Ciphertext>,
+    buffer: Vec<Ciphertext>,
+    first: usize,
+    window_size: usize,
+    last: usize,
+    fhe_prog: &'a mut FheProgramState<R>,
+}
+
+impl<'a, R: Read> F64SumSMA<'_, R> {
+    /// Creates a new SumSMA value with default values
+    pub fn new(window_size: usize, fhe_prog: &'a mut FheProgramState<R>) -> F64SumSMA<'_, R> {
+        F64SumSMA {
+            sum: None,
+            mean: None,
+            buffer: vec![],
+            first: 0,
+            window_size,
+            last: window_size - 1,
+            fhe_prog,
+        }
+    }
+
+    /// Generates arguments for the fhe function
+    fn gen_args<I>(args: Vec<I>) -> Vec<FheProgramInput>
+    where
+        I: Into<FheProgramInput>,
+    {
+        args.into_iter().map(|a| a.into()).collect()
+    }
+
+    /// encrypt value with pubkey
+    fn encrypt<P>(&self, val: P) -> Ciphertext
+    where
+        P: TryIntoPlaintext + TypeName,
+    {
+        self.fhe_prog
+            .runtime
+            .encrypt(val, &self.fhe_prog.pub_key)
+            .unwrap()
+    }
+
+    /// appends `n` to `Self::buffer` while shifting the window and caching sum
+    pub fn push(&mut self, n: Fractional<64>) {
+        let enc = self.encrypt(n);
+
+        self.buffer.push(enc.clone());
+
+        self.sum = match &self.sum {
+            None => Some(enc),
+            Some(s) => {
+                let mut sum = self
+                    .fhe_prog
+                    .runtime
+                    .run(
+                        self.fhe_prog.app.get_fhe_program(f64_sum).unwrap(),
+                        Self::gen_args(vec![s.clone(), enc]),
+                        &self.fhe_prog.pub_key,
+                    )
+                    .unwrap()[0]
+                    .clone();
+
+                if self.last >= self.window_size {
+                    sum = self
+                        .fhe_prog
+                        .runtime
+                        .run(
+                            self.fhe_prog.app.get_fhe_program(f64_sub).unwrap(),
+                            Self::gen_args(vec![sum.clone(), self.buffer[self.first].clone()]),
+                            &self.fhe_prog.pub_key,
+                        )
+                        .unwrap()[0]
+                        .clone();
+
+                    self.first += 1;
+                }
+                self.last += 1;
+                Some(sum)
+            }
+        }
+    }
+
+    /// returns the decrypted mean value is Some
+    pub fn mean(&mut self) -> Fractional<64> {
+        match &self.sum {
+            None => Fractional::<64>::default(),
+            Some(enc_sum) => {
+                let mean = self
+                    .fhe_prog
+                    .runtime
+                    .run(
+                        self.fhe_prog.app.get_fhe_program(f64_div).unwrap(),
+                        Self::gen_args(vec![enc_sum.clone()]),
+                        &self.fhe_prog.pub_key,
+                    )
+                    .unwrap()[0]
+                    .clone();
+
+                self.fhe_prog
+                    .runtime
+                    .decrypt(&mean, &self.fhe_prog.priv_key)
+                    .unwrap()
+            }
+        }
+    }
+
+    /// unwraps the sum
+    pub fn sum(&self) -> Fractional<64> {
+        match &self.sum {
+            None => Fractional::<64>::default(),
+            Some(enc_sum) => self
+                .fhe_prog
+                .runtime
+                .decrypt(enc_sum, &self.fhe_prog.priv_key)
+                .unwrap(),
+        }
     }
 }
 
@@ -118,7 +246,12 @@ pub struct FheProgramState<R: Read> {
 
 impl<R: Read> FheProgramState<R> {
     pub fn new(rdr: Option<Reader<R>>) -> Self {
-        let app = Compiler::new().fhe_program(fhe_mean).compile().unwrap();
+        let app = Compiler::new()
+            .fhe_program(f64_sum)
+            .fhe_program(f64_sub)
+            .fhe_program(f64_div)
+            .compile()
+            .unwrap();
         let runtime = FheRuntime::new(app.params()).unwrap();
         let (pub_key, priv_key) = runtime.generate_keys().unwrap();
         FheProgramState {
@@ -141,8 +274,22 @@ pub fn fhe_mean(nums: [Cipher<Fractional<64>>; SMA_WINDOW]) -> Cipher<Fractional
 mod tests {
     use super::*;
     use crate::vec_to_arr;
-    use std::rc::Rc;
+    use std::{fs::File, rc::Rc};
     use sunscreen::{Compiler, FheProgramInput, FheRuntime};
+
+    #[test]
+    fn test_f64_sum_sma() {
+        let mut fhe = FheProgramState::<File>::new(None);
+        let mut f64_sma: F64SumSMA<File> = F64SumSMA::new(SMA_WINDOW, &mut fhe);
+
+        for x in 0..7u32 {
+            f64_sma.push(Fractional::<64>::from(x as f64));
+            let mean = f64_sma.mean();
+            let sum = f64_sma.sum();
+            dbg!(x, mean, sum);
+            println!("---------------");
+        }
+    }
 
     #[test]
     fn test_mad_mape() {

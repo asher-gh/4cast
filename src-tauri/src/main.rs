@@ -2,14 +2,13 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 #![allow(dead_code)]
 
-use std::sync::Mutex;
-
 use app::{
     fetch_data,
     forecast::FheProgramState,
     handlers::{__cmd__fetch_data, __cmd__read_csv},
     read_csv, AppState,
 };
+use std::sync::Mutex;
 
 fn main() {
     tauri::Builder::default()

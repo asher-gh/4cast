@@ -33,13 +33,10 @@ fn bench_init(c: &mut Criterion) {
 }
 
 fn bench_enc_sma(c: &mut Criterion) {
-    // Initialise FHE
-    let rdr = Reader::from_reader(DATA.as_bytes());
-    let mut input = FheProgramState::new(Some(rdr));
-
+    // FIX: panics on subsequent runs
     c.bench_function("Encrypted SMA", |b| {
-        input.rdr = Some(Reader::from_reader(DATA.as_bytes()));
-        b.iter(|| enc_sma(black_box(&mut input)).unwrap())
+        let mut fhe_prog = FheProgramState::new(Some(csv::Reader::from_reader(DATA.as_bytes())));
+        b.iter(|| enc_sma(&mut fhe_prog).unwrap())
     });
 }
 

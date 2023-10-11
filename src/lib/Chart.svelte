@@ -106,6 +106,7 @@
 		console.log(selected);
 
 		if (!Array.isArray(selected) && selected != null) {
+			// TODO: Show progress indicator
 			await invoke('read_csv', { csvPath: selected });
 			data = await invoke('fetch_data', { shift: 0 });
 			initChart(chart);

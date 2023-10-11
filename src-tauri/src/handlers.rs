@@ -40,18 +40,12 @@ pub fn fetch_data(state: State<AppState>, shift: usize) -> CustomResp {
 
 #[tauri::command]
 pub async fn read_csv(state: State<'_, AppState>, csv_path: String) -> Result<(), Error> {
-    // TODO: progress indicator
-    // FIX: Invalidate CSV breaks the program
-
-    let start = Instant::now();
-
+    // FIX: Invalid CSV breaks the program
+    let start = Instant::now(); // start timer
     let mut input = state.fhe_runtime.lock().unwrap();
     input.rdr = Some(Reader::from_path(csv_path)?);
-
     let mut data = state.fc_data.lock().unwrap();
     *data = enc_sma(&mut input)?;
-
-    dbg!(start.elapsed().as_millis());
-
+    dbg!(start.elapsed().as_millis()); // end timer
     Ok(())
 }
