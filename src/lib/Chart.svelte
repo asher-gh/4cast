@@ -27,7 +27,7 @@
 		myChart = myChart || echarts.init(node, 'dark', { height: 500 });
 
 		let option: echarts.EChartsOption = {
-			animationDuration: 5000,
+			animationDuration: 25000,
 			stateAnimation: {
 				duration: 300,
 				easing: 'cubicOut'
@@ -128,7 +128,7 @@
 <button on:click={openCSV}>Load</button>
 <button on:click={() => console.log(data)}>Log fetch response</button>
 {#if forecast_algo}
-<pre><code>
+	<pre><code>
    Alogrithm: {forecast_algo.name}
    MAD: {forecast_algo.mad.toFixed(2)}
    MAPE: {forecast_algo.mape.toFixed(2)}%
@@ -142,6 +142,6 @@
 	}
 	pre {
 		color: #ccc;
-      font-size: 1.5rem;
+		font-size: 1.5rem;
 	}
 </style>
