@@ -61,3 +61,20 @@ pub fn vec_to_arr<T>(v: Vec<T>) -> [T; SMA_WINDOW] {
         )
     })
 }
+
+#[cfg(test)]
+mod tests {
+    use rayon::prelude::*;
+    #[test]
+    fn rayon_mean() {
+        let arr: Vec<u32> = (10..20).into_iter().collect();
+        let exp: Vec<u32> = arr.iter().map(|x| x * 2).collect();
+
+        // use rayon to parallel map the arr and check for sequence
+        let t_arr: Vec<u32> = arr.par_iter().map(|x| x * 2).collect();
+
+        t_arr.into_iter().zip(exp.into_iter()).for_each(|(t, e)| {
+            assert_eq!(t, e);
+        });
+    }
+}

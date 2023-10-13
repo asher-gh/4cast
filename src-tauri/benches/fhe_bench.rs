@@ -1,6 +1,10 @@
-use app::forecast::{enc_sma, FheProgramState};
+use std::{fs::File, sync::Arc};
+
+use app::forecast::{enc_sma, f64_div, f64_sum, F64SumSMA, FheProgramState};
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 use csv::Reader;
+use sunscreen::types::bfv::Fractional;
+use sunscreen_runtime::Ciphertext;
 
 const DATA: &str = "Date,Beds(England)
 1-Aug-20,879
@@ -22,7 +26,7 @@ const DATA: &str = "Date,Beds(England)
 17-Aug-20,626
 18-Aug-20,597";
 
-fn bench_init(c: &mut Criterion) {
+fn fhe_init(c: &mut Criterion) {
     c.bench_function("Fhe Init", |b| {
         // input.rdr = Reader::from_reader(bed_data.as_bytes());
         b.iter(|| {
@@ -32,13 +36,93 @@ fn bench_init(c: &mut Criterion) {
     });
 }
 
-fn bench_enc_sma(c: &mut Criterion) {
-    // FIX: panics on subsequent runs
-    c.bench_function("Encrypted SMA", |b| {
-        let mut fhe_prog = FheProgramState::new(Some(csv::Reader::from_reader(DATA.as_bytes())));
-        b.iter(|| enc_sma(&mut fhe_prog).unwrap())
+// fn bench_enc_sma(c: &mut Criterion) {
+//     // FIX: panics on subsequent runs
+//     c.bench_function("Encrypted SMA", |b| {
+//         let mut fhe_prog = FheProgramState::new(Some(csv::Reader::from_reader(DATA.as_bytes())));
+//         b.iter(|| enc_sma(Arc::from(fhe_prog)).unwrap())
+//     });
+// }
+//
+
+fn encryption(c: &mut Criterion) {
+    let fhe_prog = FheProgramState::new(Some(Reader::from_reader(DATA.as_bytes())));
+
+    c.bench_function("encryption", |b| {
+        b.iter(|| {
+            fhe_prog
+                .runtime
+                .encrypt(
+                    black_box(Fractional::<64>::from(10000.0)),
+                    &fhe_prog.pub_key,
+                )
+                .unwrap();
+        })
     });
 }
 
-criterion_group!(benches, bench_init, bench_enc_sma);
+fn decryption(c: &mut Criterion) {
+    let fhe_prog = FheProgramState::new(Some(Reader::from_reader(DATA.as_bytes())));
+
+    let enc = fhe_prog
+        .runtime
+        .encrypt(
+            black_box(Fractional::<64>::from(10000.0)),
+            &fhe_prog.pub_key,
+        )
+        .unwrap();
+
+    c.bench_function("decryption", |b| {
+        b.iter(|| {
+            fhe_prog
+                .runtime
+                .decrypt::<Fractional<64>>(black_box(&enc), &fhe_prog.priv_key)
+                .unwrap()
+        })
+    });
+}
+
+fn fhe_mean(c: &mut Criterion) {
+    let fhe_prog = FheProgramState::new(Some(Reader::from_reader(DATA.as_bytes())));
+
+    let x = fhe_prog
+        .runtime
+        .encrypt(
+            black_box(Fractional::<64>::from(10000.0)),
+            &fhe_prog.pub_key,
+        )
+        .unwrap();
+    let y = fhe_prog
+        .runtime
+        .encrypt(
+            black_box(Fractional::<64>::from(10000.0)),
+            &fhe_prog.pub_key,
+        )
+        .unwrap();
+
+    c.bench_function("fhe mean", |b| {
+        b.iter(|| {
+            let sum = fhe_prog
+                .runtime
+                .run(
+                    fhe_prog.app.get_fhe_program(f64_sum).unwrap(),
+                    F64SumSMA::<File>::gen_args(vec![x.clone(), y.clone()]),
+                    &fhe_prog.pub_key,
+                )
+                .unwrap()[0]
+                .clone();
+
+            &fhe_prog
+                .runtime
+                .run(
+                    fhe_prog.app.get_fhe_program(f64_div).unwrap(),
+                    F64SumSMA::<File>::gen_args(vec![sum]),
+                    &fhe_prog.pub_key,
+                )
+                .unwrap()[0];
+        })
+    });
+}
+
+criterion_group!(benches, fhe_init, encryption, decryption, fhe_mean);
 criterion_main!(benches);

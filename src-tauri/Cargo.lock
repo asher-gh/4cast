@@ -76,6 +76,7 @@ dependencies = [
  "criterion",
  "csv",
  "rand 0.8.5",
+ "rayon",
  "serde",
  "serde_json",
  "simple_moving_average",

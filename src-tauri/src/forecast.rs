@@ -2,7 +2,12 @@
 use crate::{vec_to_arr, Error, Record, SMA_WINDOW};
 use csv::Reader;
 use simple_moving_average::{SumTreeSMA, SMA};
-use std::{default, fs::File, io::Read};
+use std::{
+    default,
+    fs::File,
+    io::Read,
+    sync::{Arc, Mutex},
+};
 use sunscreen::{
     fhe_program,
     types::{bfv::Fractional, Cipher},
@@ -72,8 +77,11 @@ pub fn naive_sma<R: Read>(mut rdr: Reader<R>) -> Result<FCData, Error> {
     Ok(data)
 }
 
-pub fn enc_sma<R: Read>(fhe_prog: &mut FheProgramState<R>) -> Result<FCData, Error> {
+pub fn enc_sma<R: Read + Sync + Send>(
+    mut fhe_prog: Arc<FheProgramState<R>>,
+) -> Result<FCData, Error> {
     let mut data = FCData::default();
+    let fhe_prog = Arc::get_mut(&mut fhe_prog).unwrap();
     let mut sma = F64SumSMA::new(SMA_WINDOW, fhe_prog);
 
     for res in sma.fhe_prog.rdr.as_mut().unwrap().deserialize() {
@@ -87,16 +95,23 @@ pub fn enc_sma<R: Read>(fhe_prog: &mut FheProgramState<R>) -> Result<FCData, Err
         data.beds_forecast.push(*x);
     }
 
-    for x in &data.beds_actual[SMA_WINDOW..] {
-        data.beds_forecast.push(sma.mean().ceil() as u32);
+    let sma = Mutex::from(sma);
+    let mut buffer: Vec<u32> = vec![];
+    let buf_mut = Mutex::from(&mut buffer);
+
+    data.beds_actual[SMA_WINDOW..].iter().for_each(|x| {
+        let mut sma = sma.lock().unwrap();
+        buf_mut.lock().unwrap().push(sma.mean().ceil() as u32);
         sma.push(Fractional::<64>::from(*x as f64));
-    }
+    });
+
+    data.beds_forecast.append(&mut buffer);
 
     Ok(data)
 }
 
 #[fhe_program(scheme = "bfv")]
-fn f64_sum(
+pub fn f64_sum(
     cipher: Cipher<Fractional<64>>,
     scalar: Cipher<Fractional<64>>,
 ) -> Cipher<Fractional<64>> {
@@ -109,13 +124,11 @@ fn f64_sub(a: Cipher<Fractional<64>>, b: Cipher<Fractional<64>>) -> Cipher<Fract
     a - b
 }
 #[fhe_program(scheme = "bfv")]
-fn f64_div(cipher: Cipher<Fractional<64>>) -> Cipher<Fractional<64>> {
+pub fn f64_div(cipher: Cipher<Fractional<64>>) -> Cipher<Fractional<64>> {
     // Fractional only support division by literals
     cipher / SMA_WINDOW as f64
 }
 
-// TODO: remove this allow
-#[allow(dead_code)]
 pub struct F64SumSMA<'a, R: Read> {
     sum: Option<Ciphertext>,
     mean: Option<Ciphertext>,
@@ -141,7 +154,7 @@ impl<'a, R: Read> F64SumSMA<'_, R> {
     }
 
     /// Generates arguments for the fhe function
-    fn gen_args<I>(args: Vec<I>) -> Vec<FheProgramInput>
+    pub fn gen_args<I>(args: Vec<I>) -> Vec<FheProgramInput>
     where
         I: Into<FheProgramInput>,
     {
@@ -381,7 +394,7 @@ mod tests {
         let rdr = csv::Reader::from_reader(bed_data.as_bytes());
         let mut input = FheProgramState::new(Some(rdr));
 
-        let res = enc_sma(&mut input).unwrap();
+        let res = enc_sma(Arc::new(input)).unwrap();
         dbg!(&bed_forecast, &res.beds_forecast);
 
         for (i, x) in bed_forecast.iter().enumerate() {

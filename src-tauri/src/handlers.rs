@@ -1,9 +1,12 @@
-use crate::{forecast::enc_sma, mad_mape, AppState, CustomResp, Error};
+use crate::{
+    forecast::{enc_sma, FheProgramState},
+    mad_mape, AppState, CustomResp, Error,
+};
 use csv::Reader;
-use std::time::Instant;
+use std::{sync::Arc, time::Instant};
 use tauri::State;
 
-// FIX: better state logging
+// TODO: Logging
 //
 // #[tauri::command]
 // pub fn log(state: tauri::State<AppState>) {
@@ -42,10 +45,15 @@ pub fn fetch_data(state: State<AppState>, shift: usize) -> CustomResp {
 pub async fn read_csv(state: State<'_, AppState>, csv_path: String) -> Result<(), Error> {
     // FIX: Invalid CSV breaks the program
     let start = Instant::now(); // start timer
-    let mut input = state.fhe_runtime.lock().unwrap();
-    input.rdr = Some(Reader::from_path(csv_path)?);
+
+    // FIX: use cached fhe_runtime
+    // let mut input = state.fhe_runtime.lock().unwrap();
+    // input.rdr = Some(Reader::from_path(csv_path)?);
+
     let mut data = state.fc_data.lock().unwrap();
-    *data = enc_sma(&mut input)?;
+
+    let input = FheProgramState::new(Some(Reader::from_path(csv_path)?));
+    *data = enc_sma(Arc::from(input))?;
     dbg!(start.elapsed().as_millis()); // end timer
     Ok(())
 }
